@@ -2,9 +2,11 @@ use crate::config::{Config, OutputFormat};
 use crate::scanner::Match;
 use colored::Colorize;
 use serde::Serialize;
+use std::path::{Path, PathBuf};
 
 pub struct Printer {
     format: OutputFormat,
+    root: PathBuf,
     buffer: Vec<Match>,
 }
 
@@ -12,13 +14,14 @@ impl Printer {
     pub fn new(config: &Config) -> Self {
         Printer {
             format: config.output_format.clone(),
+            root: config.root.clone(),
             buffer: Vec::new(),
         }
     }
 
     pub fn print(&mut self, m: Match) {
         match self.format {
-            OutputFormat::Text => print_text_match(&m),
+            OutputFormat::Text => print_text_match(&m, &self.root),
             OutputFormat::Json | OutputFormat::Csv => self.buffer.push(m),
         }
     }
@@ -32,29 +35,39 @@ impl Printer {
     }
 }
 
-fn print_text_match(m: &Match) {
-    let location = format!("{}:{}:{}:", m.path.display(), m.line_number, m.column);
-    print!("{}", location.cyan().bold());
+fn print_text_match(m: &Match, root: &Path) {
+    let rel_path = m
+        .path
+        .strip_prefix(root)
+        .unwrap_or(&m.path)
+        .display()
+        .to_string();
 
-    // Highlight the tag within the line content.
-    let line = &m.line_content;
-    // Find the tag in the line to color it. The column is 1-based.
-    let col0 = m.column.saturating_sub(1);
-    let tag_len = m.tag.len();
-    if col0 + tag_len <= line.len() {
-        let before = &line[..col0];
-        let tag_part = &line[col0..col0 + tag_len];
-        let after = &line[col0 + tag_len..];
-        println!(" {}{}{}", before, tag_part.red().bold(), after);
-    } else {
-        println!(" {}", line);
-    }
+    let location = format!("{}:{}", rel_path, m.line_number);
+    let line = m.line_content.trim();
 
     for ctx in &m.context_before {
-        println!("  {}", ctx.dimmed());
+        println!("  {}", ctx.trim().dimmed());
     }
+
+    // Highlight the tag within the trimmed line.
+    if let Some(tag_pos) = line.find(m.tag.as_str()) {
+        let before = &line[..tag_pos];
+        let tag_part = &line[tag_pos..tag_pos + m.tag.len()];
+        let after = &line[tag_pos + m.tag.len()..];
+        println!(
+            "{}  {}{}{}",
+            location.cyan().bold(),
+            before,
+            tag_part.red().bold(),
+            after
+        );
+    } else {
+        println!("{}  {}", location.cyan().bold(), line);
+    }
+
     for ctx in &m.context_after {
-        println!("  {}", ctx.dimmed());
+        println!("  {}", ctx.trim().dimmed());
     }
 }
 
