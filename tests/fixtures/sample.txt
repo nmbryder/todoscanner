@@ -1,0 +1,4 @@
+This is a plain text file with no annotation tags.
+It is used for negative tests and extension filter tests.
+There are no code review markers in this file.
+This file exists solely to verify that the scanner produces no output for it.
